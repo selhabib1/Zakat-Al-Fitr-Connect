@@ -42,9 +42,15 @@ const firebaseConfig = {
     appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+const isFirebaseConfigured = !!firebaseConfig.apiKey;
+let app, auth, db;
+
+if (isFirebaseConfigured) {
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+}
+
 const appId = import.meta.env.VITE_APP_ID || 'zakat-fitr-app';
 
 // Traductions
@@ -174,6 +180,7 @@ export default function App() {
     const t = translations[lang];
 
     useEffect(() => {
+        if (!isFirebaseConfigured) return;
         const initAuth = async () => {
             try {
                 await signInAnonymously(auth);
@@ -182,12 +189,14 @@ export default function App() {
             }
         };
         initAuth();
-        const unsubscribe = onAuthStateChanged(auth, setUser);
-        return () => unsubscribe();
+        if (auth) {
+            const unsubscribe = onAuthStateChanged(auth, setUser);
+            return () => unsubscribe();
+        }
     }, []);
 
     useEffect(() => {
-        if (!user) return;
+        if (!isFirebaseConfigured || !user) return;
         const qDonors = collection(db, 'artifacts', appId, 'public', 'data', 'donors');
         const qReceivers = collection(db, 'artifacts', appId, 'public', 'data', 'receivers');
         const unsubDonors = onSnapshot(qDonors, (s) => setDonors(s.docs.map(d => ({ id: d.id, ...d.data() }))), (err) => console.error(err));
@@ -225,7 +234,7 @@ export default function App() {
         } catch (err) { console.error(err); }
     };
 
-    if (!firebaseConfig.apiKey) {
+    if (!isFirebaseConfigured) {
         return (
             <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 text-center">
                 <div className="bg-white p-8 rounded-2xl shadow-sm border max-w-md">
