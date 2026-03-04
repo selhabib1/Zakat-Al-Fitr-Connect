@@ -72,7 +72,7 @@ const translations = {
         form_donor_title: "Formulaire Donneur",
         form_receiver_title: "Besoin de Zakat",
         label_name: "Nom ou Surnom",
-        label_zone: "Ville / Quartier / Secteur",
+        label_zone: "Mosquée de rendez-vous (ex: Mosquée de Paris)",
         label_household_donor: "Nombre de personnes pour qui vous donnez",
         label_household_receiver: "Nombre de personnes dans votre foyer",
         label_contact: "Téléphone (Signal/WhatsApp/SMS)",
@@ -128,7 +128,7 @@ const translations = {
         form_donor_title: "Donor Form",
         form_receiver_title: "Need Zakat",
         label_name: "Name or Nickname",
-        label_zone: "City / District / Area",
+        label_zone: "Meeting Mosque (ex: Central Mosque)",
         label_household_donor: "Number of people you are giving for",
         label_household_receiver: "Number of people in your household",
         label_contact: "Phone (Signal/WhatsApp/SMS)",
@@ -223,8 +223,12 @@ export default function App() {
                 status: 'active',
                 createdAt: new Date().toISOString()
             });
+            // Force reset view to immediately show exactly the dashboard
             setView('dashboard');
-        } catch (err) { console.error(err); }
+        } catch (err) {
+            console.error("Firebase Add Error:", err);
+            alert("Erreur lors de l'enregistrement. Vérifiez que votre base de données Firestore est bien ouverte dans console.firebase.google.com (Security Rules) !");
+        }
     };
 
     const markAsCompleted = async (type, id) => {
@@ -343,7 +347,7 @@ function Form({ type, onSubmit, t, lang }) {
                     </label>
                     <label className="block">
                         <span className="text-sm font-medium">{t.label_zone} *</span>
-                        <input className="w-full mt-1 p-3 bg-slate-50 border rounded-xl outline-none" placeholder="Ex: Paris 19" value={form.zone} onChange={e => setForm({ ...form, zone: e.target.value })} required />
+                        <input className="w-full mt-1 p-3 bg-slate-50 border rounded-xl outline-none" placeholder={lang === 'fr' ? 'Ex: Mosquée de Paris' : 'Ex: Central Mosque'} value={form.zone} onChange={e => setForm({ ...form, zone: e.target.value })} required />
                     </label>
                     <label className="block">
                         <span className="text-sm font-medium">{isDonor ? t.label_household_donor : t.label_household_receiver}</span>
@@ -402,6 +406,32 @@ function Form({ type, onSubmit, t, lang }) {
     );
 }
 
+// Helper for typo-tolerant matching
+const normalizeString = (str) => {
+    return str.toLowerCase().replace(/[^a-z0-9]/g, '');
+};
+
+const levenshtein = (a, b) => {
+    if (a.length === 0) return b.length;
+    if (b.length === 0) return a.length;
+    const matrix = [];
+    for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+    for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+    for (let i = 1; i <= b.length; i++) {
+        for (let j = 1; j <= a.length; j++) {
+            if (b.charAt(i - 1) === a.charAt(j - 1)) {
+                matrix[i][j] = matrix[i - 1][j - 1];
+            } else {
+                matrix[i][j] = Math.min(
+                    matrix[i - 1][j - 1] + 1,
+                    Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1)
+                );
+            }
+        }
+    }
+    return matrix[b.length][a.length];
+};
+
 function Dashboard({ donors, receivers, currentUser, onComplete, t }) {
     const myDonation = donors.find(d => d.userId === currentUser?.uid);
     const myRequest = receivers.find(r => r.userId === currentUser?.uid);
@@ -410,11 +440,18 @@ function Dashboard({ donors, receivers, currentUser, onComplete, t }) {
     const getMatches = () => {
         if (!entry || entry.status === 'completed') return [];
         const list = myDonation ? receivers : donors;
-        return list.filter(item =>
-            item.status !== 'completed' &&
-            (item.zone.toLowerCase().includes(entry.zone.toLowerCase()) ||
-                entry.zone.toLowerCase().includes(item.zone.toLowerCase()))
-        ).slice(0, 5);
+        const myZoneNorm = normalizeString(entry.zone);
+
+        return list.filter(item => {
+            if (item.status === 'completed') return false;
+            const itemZoneNorm = normalizeString(item.zone);
+
+            // Allow matching if one string is a substring of another, or if the Levenshtein distance is very close (e.g. <= 3 for typo tolerance)
+            const isSubstring = itemZoneNorm.includes(myZoneNorm) || myZoneNorm.includes(itemZoneNorm);
+            const distance = levenshtein(myZoneNorm, itemZoneNorm);
+
+            return isSubstring || distance <= 3;
+        }).slice(0, 5);
     };
 
     const matches = getMatches();
