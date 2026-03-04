@@ -225,6 +225,7 @@ export default function App() {
             });
             // Force reset view to immediately show exactly the dashboard
             setView('dashboard');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         } catch (err) {
             console.error("Firebase Add Error:", err);
             alert("Erreur lors de l'enregistrement. Vérifiez que votre base de données Firestore est bien ouverte dans console.firebase.google.com (Security Rules) !");
@@ -332,7 +333,14 @@ function Card({ title, infoTitle, infoDesc, btnLabel, onClick, color, icon }) {
 
 function Form({ type, onSubmit, t, lang }) {
     const [form, setForm] = useState({ name: '', zone: '', householdSize: 1, contact: '' });
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const isDonor = type === 'donor';
+
+    const handleSubmit = async () => {
+        setIsSubmitting(true);
+        await onSubmit(form);
+        setIsSubmitting(false);
+    };
 
     return (
         <div className="max-w-4xl mx-auto grid md:grid-cols-2 gap-8 animate-in slide-in-from-bottom-4 duration-500">
@@ -359,8 +367,11 @@ function Form({ type, onSubmit, t, lang }) {
                         <input className="w-full mt-1 p-3 bg-slate-50 border rounded-xl outline-none" placeholder="..." value={form.contact} onChange={e => setForm({ ...form, contact: e.target.value })} required />
                         <p className="text-xs text-slate-500 mt-1">{t.contact_desc}</p>
                     </label>
-                    <button onClick={() => onSubmit(form)} className={`w-full py-4 text-white rounded-xl font-bold shadow-lg transition-transform active:scale-95 ${isDonor ? 'bg-emerald-600' : 'bg-orange-600'}`}>
-                        {isDonor ? t.btn_confirm : t.btn_validate}
+                    <button
+                        onClick={handleSubmit}
+                        disabled={isSubmitting}
+                        className={`w-full py-4 text-white rounded-xl font-bold shadow-lg transition-transform active:scale-95 disabled:opacity-50 disabled:active:scale-100 ${isDonor ? 'bg-emerald-600' : 'bg-orange-600'}`}>
+                        {isSubmitting ? (lang === 'fr' ? 'Enregistrement...' : 'Saving...') : (isDonor ? t.btn_confirm : t.btn_validate)}
                     </button>
                 </div>
             </div>
@@ -446,11 +457,15 @@ function Dashboard({ donors, receivers, currentUser, onComplete, t }) {
             if (item.status === 'completed') return false;
             const itemZoneNorm = normalizeString(item.zone);
 
-            // Allow matching if one string is a substring of another, or if the Levenshtein distance is very close (e.g. <= 3 for typo tolerance)
+            // Allow matching if one string is a substring of another, or if the Levenshtein distance is very close
+            // (e.g. <= 4 for high typo tolerance like 'dhounnourain' vs 'dounnouran')
             const isSubstring = itemZoneNorm.includes(myZoneNorm) || myZoneNorm.includes(itemZoneNorm);
             const distance = levenshtein(myZoneNorm, itemZoneNorm);
 
-            return isSubstring || distance <= 3;
+            // Scaled distance: allow up to 4 mistakes for longer words, but at least 2 for shorter ones
+            const allowedDistance = Math.max(2, Math.min(4, Math.floor(Math.max(myZoneNorm.length, itemZoneNorm.length) / 3)));
+
+            return isSubstring || distance <= allowedDistance;
         }).slice(0, 5);
     };
 
