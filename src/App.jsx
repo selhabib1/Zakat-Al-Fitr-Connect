@@ -225,7 +225,7 @@ export default function App() {
             });
             // Force reset view to immediately show exactly the dashboard
             setView('dashboard');
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            window.scrollTo(0, 0); // Safer for all mobile browsers Safari
         } catch (err) {
             console.error("Firebase Add Error:", err);
             alert("Erreur lors de l'enregistrement. Vérifiez que votre base de données Firestore est bien ouverte dans console.firebase.google.com (Security Rules) !");
@@ -337,9 +337,12 @@ function Form({ type, onSubmit, t, lang }) {
     const isDonor = type === 'donor';
 
     const handleSubmit = async () => {
-        setIsSubmitting(true);
-        await onSubmit(form);
-        setIsSubmitting(false);
+        try {
+            setIsSubmitting(true);
+            await onSubmit(form);
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     return (
@@ -419,7 +422,8 @@ function Form({ type, onSubmit, t, lang }) {
 
 // Helper for typo-tolerant matching
 const normalizeString = (str) => {
-    return str.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (!str) return '';
+    return String(str).toLowerCase().replace(/[^a-z0-9]/g, '');
 };
 
 const levenshtein = (a, b) => {
@@ -462,10 +466,10 @@ function Dashboard({ donors, receivers, currentUser, onComplete, t }) {
             const isSubstring = itemZoneNorm.includes(myZoneNorm) || myZoneNorm.includes(itemZoneNorm);
             const distance = levenshtein(myZoneNorm, itemZoneNorm);
 
-            // Scaled distance: allow up to 4 mistakes for longer words, but at least 2 for shorter ones
-            const allowedDistance = Math.max(2, Math.min(4, Math.floor(Math.max(myZoneNorm.length, itemZoneNorm.length) / 3)));
+            // Scaled distance: allow up to 5 mistakes for longer words, but at least 2 for shorter ones
+            const allowedDistance = Math.max(2, Math.min(5, Math.floor(Math.max(myZoneNorm.length, itemZoneNorm.length) / 3)));
 
-            return isSubstring || distance <= allowedDistance;
+            return isSubstring || distance <= 5;
         }).slice(0, 5);
     };
 
